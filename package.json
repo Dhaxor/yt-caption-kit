@@ -1,0 +1,72 @@
+{
+  "name": "yt-caption-kit",
+  "version": "1.0.0",
+  "description": "Fetch YouTube captions and transcripts in Node.js and TypeScript without a headless browser.",
+  "type": "module",
+  "main": "./dist/src/index.js",
+  "types": "./dist/src/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/src/index.d.ts",
+      "import": "./dist/src/index.js"
+    },
+    "./errors": {
+      "types": "./dist/src/errors.d.ts",
+      "import": "./dist/src/errors.js"
+    },
+    "./formatters": {
+      "types": "./dist/src/formatters.d.ts",
+      "import": "./dist/src/formatters.js"
+    },
+    "./proxies": {
+      "types": "./dist/src/proxies.d.ts",
+      "import": "./dist/src/proxies.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "bin": {
+    "yt-caption-kit": "./bin/yt-caption-kit.js"
+  },
+  "files": [
+    "bin",
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "check": "npm run build",
+    "test": "npm run build && node --test dist/test/index.test.js"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dhaxor/yt-caption-kit.git"
+  },
+  "keywords": [
+    "cli",
+    "subtitle",
+    "subtitles",
+    "transcript",
+    "transcripts",
+    "youtube",
+    "youtube-api",
+    "youtube-captions",
+    "youtube-subtitles",
+    "youtube-transcripts"
+  ],
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/dhaxor/yt-caption-kit/issues"
+  },
+  "homepage": "https://github.com/dhaxor/yt-caption-kit#readme",
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "proxy-agent": "^6.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^25.4.0",
+    "typescript": "^5.9.3"
+  }
+}

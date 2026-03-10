@@ -1,0 +1,104 @@
+name: Bug report
+description: Report a reproducible problem with yt-caption-kit.
+title: "[Bug]: "
+labels:
+  - bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for reporting an issue.
+
+        Please include a minimal reproduction and the exact runtime details below.
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What went wrong?
+      placeholder: A short description of the problem.
+    validations:
+      required: true
+  - type: input
+    id: package-version
+    attributes:
+      label: Package version
+      description: Output of `npm ls yt-caption-kit` or the version from package.json.
+      placeholder: 1.2.4
+    validations:
+      required: true
+  - type: input
+    id: node-version
+    attributes:
+      label: Node.js version
+      description: Output of `node -v`.
+      placeholder: v20.18.0
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Operating system
+      placeholder: Ubuntu 24.04 / macOS 15 / Windows 11
+    validations:
+      required: true
+  - type: input
+    id: video-id
+    attributes:
+      label: Video ID or URL
+      description: Provide the exact video ID or URL if the issue is video-specific.
+      placeholder: LKNldR60zss
+  - type: dropdown
+    id: surface
+    attributes:
+      label: Where did the issue happen?
+      options:
+        - API usage
+        - CLI usage
+        - Build / TypeScript types
+        - Packaging / npm install
+        - Other
+    validations:
+      required: true
+  - type: dropdown
+    id: proxy
+    attributes:
+      label: Proxy configuration
+      options:
+        - None
+        - Generic proxy
+        - Webshare proxy
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: Reproduction
+      description: Share the smallest code snippet or CLI command that reproduces the issue.
+      placeholder: |
+        import { YtCaptionKit } from "yt-caption-kit";
+        const api = new YtCaptionKit();
+        await api.fetch("LKNldR60zss");
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+      placeholder: Describe what you expected to happen.
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: Actual behavior / logs
+      description: Include stack traces, CLI output, or screenshots if helpful.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Any other details that may help reproduce or diagnose the problem.
