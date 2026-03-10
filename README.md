@@ -3,7 +3,7 @@
 [![npm version](https://img.shields.io/npm/v/yt-caption-kit.svg)](https://www.npmjs.com/package/yt-caption-kit)
 [![License: MIT](https://img.shields.io/badge/license-MIT-brightgreen.svg)](LICENSE)
 
-Fetch YouTube transcripts/subtitles in **Node.js** and **TypeScript** without a headless browser.
+Fetch, translate, and format YouTube captions and transcripts in **Node.js** and **TypeScript** with a typed API, CLI, SRT/WebVTT output, and proxy support.
 
 ## Features
 

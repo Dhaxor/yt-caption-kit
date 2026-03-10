@@ -43,16 +43,20 @@
     "url": "git+https://github.com/dhaxor/yt-caption-kit.git"
   },
   "keywords": [
-    "cli",
-    "subtitle",
-    "subtitles",
-    "transcript",
-    "transcripts",
     "youtube",
-    "youtube-api",
+    "youtube-transcript",
+    "youtube-transcripts",
     "youtube-captions",
     "youtube-subtitles",
-    "youtube-transcripts"
+    "transcript",
+    "captions",
+    "subtitles",
+    "translation",
+    "srt",
+    "webvtt",
+    "cli",
+    "nodejs",
+    "typescript"
   ],
   "license": "MIT",
   "bugs": {
