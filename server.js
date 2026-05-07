@@ -2,6 +2,7 @@ import express from "express";
 import path from "path";
 import { fileURLToPath } from "url";
 import { YtCaptionKit } from "./dist/src/index.js";
+import { GenericProxyConfig, WebshareProxyConfig } from "./dist/src/proxies.js";
 import {
   JSONFormatter,
   TextFormatter,
@@ -11,6 +12,41 @@ import {
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+function buildProxyConfig() {
+  // Raw credential string: IP:PORT:USERNAME:PASSWORD
+  if (process.env.WEBSHARE_PROXY) {
+    const parts = process.env.WEBSHARE_PROXY.split(":");
+    if (parts.length === 4) {
+      return new WebshareProxyConfig({
+        domainName: parts[0],
+        proxyPort: parseInt(parts[1], 10),
+        proxyUsername: parts[2],
+        proxyPassword: parts[3],
+      });
+    }
+  }
+
+  if (process.env.WEBSHARE_PROXY_USERNAME && process.env.WEBSHARE_PROXY_PASSWORD) {
+    return new WebshareProxyConfig({
+      proxyUsername: process.env.WEBSHARE_PROXY_USERNAME,
+      proxyPassword: process.env.WEBSHARE_PROXY_PASSWORD,
+      filterIpLocations: process.env.WEBSHARE_FILTER_IP_LOCATIONS
+        ? process.env.WEBSHARE_FILTER_IP_LOCATIONS.split(",").map((s) => s.trim())
+        : undefined,
+    });
+  }
+
+  if (process.env.PROXY_URL) {
+    return new GenericProxyConfig(process.env.PROXY_URL);
+  }
+
+  return undefined;
+}
+
+const yt = new YtCaptionKit({
+  proxyConfig: buildProxyConfig(),
+});
 
 const app = express();
 app.use(express.json());
@@ -30,7 +66,7 @@ function extractVideoId(raw) {
 }
 
 app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok" });
+  res.json({ status: "ok", proxy: !!buildProxyConfig() });
 });
 
 app.get("/api/captions/:videoId", async (req, res) => {
@@ -38,7 +74,6 @@ app.get("/api/captions/:videoId", async (req, res) => {
     const videoId = extractVideoId(req.params.videoId);
     if (!videoId) return res.status(400).json({ error: "Invalid video ID" });
 
-    const yt = new YtCaptionKit({});
     const list = await yt.list(videoId);
 
     const transcripts = [];
@@ -55,7 +90,8 @@ app.get("/api/captions/:videoId", async (req, res) => {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     const name = err instanceof Error ? err.constructor.name : "Error";
-    res.status(500).json({ error: message, name });
+    const code = name === "InvalidVideoId" || name === "VideoUnavailable" ? 404 : 500;
+    res.status(code).json({ error: message, name });
   }
 });
 
@@ -68,7 +104,6 @@ app.get("/api/captions/:videoId/fetch", async (req, res) => {
     const preserveFormatting = req.query.preserveFormatting === "true";
     const format = typeof req.query.format === "string" ? req.query.format : "json";
 
-    const yt = new YtCaptionKit({});
     const languages = lang ? [lang] : undefined;
     const transcript = await yt.fetch(videoId, { languages, preserveFormatting });
 
@@ -109,6 +144,9 @@ if (!process.env.VERCEL) {
   const PORT = process.env.PORT || 3000;
   app.listen(PORT, () => {
     console.log(`Get YT Transcripts → http://localhost:${PORT}`);
+    if (!buildProxyConfig()) {
+      console.warn("No proxy configured — set WEBSHARE_PROXY_USERNAME / WEBSHARE_PROXY_PASSWORD or PROXY_URL env vars.");
+    }
   });
 }
 

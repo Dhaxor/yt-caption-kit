@@ -133,11 +133,13 @@
 
   async function apiList(videoId) {
     const res = await fetch(`/api/captions/${videoId}`);
+    const body = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.error || `Request failed (${res.status})`);
+      const err = new Error(body.error || `Request failed (${res.status})`);
+      err.code = body.name || "Error";
+      throw err;
     }
-    return res.json();
+    return body;
   }
 
   async function apiFetch(videoId, lang, preserveFormatting) {
@@ -145,11 +147,37 @@
     if (lang) params.set("lang", lang);
     if (preserveFormatting) params.set("preserveFormatting", "true");
     const res = await fetch(`/api/captions/${videoId}/fetch?${params}`);
+    const body = await res.json().catch(() => ({}));
     if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      throw new Error(body.error || `Request failed (${res.status})`);
+      const err = new Error(body.error || `Request failed (${res.status})`);
+      err.code = body.name || "Error";
+      throw err;
     }
-    return res.json();
+    return body;
+  }
+
+  function friendlyError(err) {
+    const msg = err.message || "";
+    const code = err.code || "";
+    if (code === "RequestBlocked" || code === "IpBlocked") {
+      return {
+        title: "Request Blocked by YouTube",
+        message: "YouTube is blocking requests from this server's IP address. A proxy or VPN is needed to fetch transcripts from a datacenter (like Vercel). Please configure proxy credentials.",
+      };
+    }
+    if (code === "VideoUnavailable" || code === "InvalidVideoId") {
+      return { title: "Video Not Found", message: msg || "This video ID is invalid or the video is unavailable." };
+    }
+    if (code === "TranscriptsDisabled") {
+      return { title: "Transcripts Disabled", message: "This video has transcripts/captions disabled by the uploader." };
+    }
+    if (code === "AgeRestricted") {
+      return { title: "Age Restricted", message: "This video is age-restricted and requires authentication to access." };
+    }
+    if (code === "NoTranscriptFound") {
+      return { title: "No Transcript Found", message: "No captions are available for this video in any language." };
+    }
+    return { title: "Error", message: msg || "An unexpected error occurred. Please try again." };
   }
 
   // ─── Fetch Flow ───────────────────────────────
@@ -189,7 +217,8 @@
 
       el.heroSection.scrollIntoView({ behavior: "smooth" });
     } catch (err) {
-      showError("Error", err.message);
+      const friendly = friendlyError(err);
+      showError(friendly.title, friendly.message);
     }
   }
 
@@ -201,7 +230,7 @@
       const data = await apiFetch(state.videoId, langCode, true);
       state.snippets = data.snippets || [];
 
-      el.videoTitle.textContent = data.language ? `Transcript · ${data.language}` : "Transcript";
+      el.videoTitle.textContent = data.language ? `Transcript ${String.fromCharCode(183)} ${data.language}` : "Transcript";
       el.metaLang.textContent = data.languageCode || "";
       el.metaGen.hidden = !data.isGenerated;
 
@@ -211,7 +240,8 @@
       showSection(null);
       el.resultsContent.hidden = false;
     } catch (err) {
-      showError("Error", err.message);
+      const friendly = friendlyError(err);
+      showError(friendly.title, friendly.message);
     }
   }
 
