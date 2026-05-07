@@ -14,19 +14,17 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 function buildProxyConfig() {
-  // Raw credential string: IP:PORT:USERNAME:PASSWORD
+  // Raw credential string: IP:PORT:USERNAME:PASSWORD (static/dedicated proxy)
   if (process.env.WEBSHARE_PROXY) {
     const parts = process.env.WEBSHARE_PROXY.split(":");
     if (parts.length === 4) {
-      return new WebshareProxyConfig({
-        domainName: parts[0],
-        proxyPort: parseInt(parts[1], 10),
-        proxyUsername: parts[2],
-        proxyPassword: parts[3],
-      });
+      const [host, port, username, password] = parts;
+      const url = `http://${username}:${password}@${host}:${port}`;
+      return new GenericProxyConfig(url);
     }
   }
 
+  // Webshare rotating proxy (p.webshare.io)
   if (process.env.WEBSHARE_PROXY_USERNAME && process.env.WEBSHARE_PROXY_PASSWORD) {
     return new WebshareProxyConfig({
       proxyUsername: process.env.WEBSHARE_PROXY_USERNAME,
@@ -37,6 +35,7 @@ function buildProxyConfig() {
     });
   }
 
+  // Generic HTTP/HTTPS/SOCKS proxy
   if (process.env.PROXY_URL) {
     return new GenericProxyConfig(process.env.PROXY_URL);
   }
