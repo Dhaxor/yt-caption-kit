@@ -64,6 +64,12 @@ function extractVideoId(raw) {
   return null;
 }
 
+function errorBody(err) {
+  const name = err instanceof Error ? err.constructor.name : "Error";
+  const message = String(err).trim() || name;
+  return { error: message, name };
+}
+
 app.get("/api/health", (_req, res) => {
   res.json({ status: "ok", proxy: !!buildProxyConfig() });
 });
@@ -71,7 +77,7 @@ app.get("/api/health", (_req, res) => {
 app.get("/api/captions/:videoId", async (req, res) => {
   try {
     const videoId = extractVideoId(req.params.videoId);
-    if (!videoId) return res.status(400).json({ error: "Invalid video ID" });
+    if (!videoId) return res.status(400).json(errorBody(new Error("Invalid video ID")));
 
     const list = await yt.list(videoId);
 
@@ -87,17 +93,16 @@ app.get("/api/captions/:videoId", async (req, res) => {
 
     res.json({ videoId, transcripts });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const name = err instanceof Error ? err.constructor.name : "Error";
+    const { name, error } = errorBody(err);
     const code = name === "InvalidVideoId" || name === "VideoUnavailable" ? 404 : 500;
-    res.status(code).json({ error: message, name });
+    res.status(code).json({ error, name });
   }
 });
 
 app.get("/api/captions/:videoId/fetch", async (req, res) => {
   try {
     const videoId = extractVideoId(req.params.videoId);
-    if (!videoId) return res.status(400).json({ error: "Invalid video ID" });
+    if (!videoId) return res.status(400).json(errorBody(new Error("Invalid video ID")));
 
     const lang = typeof req.query.lang === "string" ? req.query.lang : undefined;
     const preserveFormatting = req.query.preserveFormatting === "true";
@@ -127,11 +132,9 @@ app.get("/api/captions/:videoId/fetch", async (req, res) => {
         });
     }
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    const name = err instanceof Error ? err.constructor.name : "Error";
-    const code =
-      name === "InvalidVideoId" || name === "VideoUnavailable" ? 404 : 500;
-    res.status(code).json({ error: message, name });
+    const { name, error } = errorBody(err);
+    const code = name === "InvalidVideoId" || name === "VideoUnavailable" ? 404 : 500;
+    res.status(code).json({ error, name });
   }
 });
 
