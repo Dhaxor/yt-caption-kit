@@ -215,7 +215,7 @@
       showSection(null);
       el.resultsContent.hidden = false;
 
-      el.heroSection.scrollIntoView({ behavior: "smooth" });
+      el.resultsSection.scrollIntoView({ behavior: "smooth" });
     } catch (err) {
       const friendly = friendlyError(err);
       showError(friendly.title, friendly.message);
