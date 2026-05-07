@@ -91,7 +91,7 @@ export class DefaultHttpClient implements HttpClient {
     return new Promise((resolve, reject) => {
       const req = requestFn(
         url,
-        { agent, headers, method, timeout: 15000 },
+        { agent, headers, method },
         (response) => {
           const chunks: Buffer[] = [];
           response.on("data", (chunk: Buffer | string) => {
@@ -110,6 +110,9 @@ export class DefaultHttpClient implements HttpClient {
       );
 
       req.on("error", reject);
+      req.setTimeout(20000, () => {
+        req.destroy(new Error(`Request timed out after 20s — ${urlString}`));
+      });
       if (body) {
         req.write(body);
       }
