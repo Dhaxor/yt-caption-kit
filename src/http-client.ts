@@ -91,7 +91,7 @@ export class DefaultHttpClient implements HttpClient {
     return new Promise((resolve, reject) => {
       const req = requestFn(
         url,
-        { agent, headers, method },
+        { agent, headers, method, timeout: 15000 },
         (response) => {
           const chunks: Buffer[] = [];
           response.on("data", (chunk: Buffer | string) => {
