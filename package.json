@@ -34,7 +34,10 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "tsc -p tsconfig.json",
+    "build": "node ./node_modules/typescript/bin/tsc -p tsconfig.json",
+    "vercel-build": "node ./node_modules/typescript/bin/tsc -p tsconfig.json",
+    "serve": "npm run build && node server.js",
+    "start": "node server.js",
     "check": "npm run build",
     "test": "npm run build && node --test dist/test/index.test.js"
   },
@@ -67,6 +70,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "express": "^4.21.2",
     "proxy-agent": "^6.5.0"
   },
   "devDependencies": {

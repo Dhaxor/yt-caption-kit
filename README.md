@@ -124,6 +124,30 @@ const apiWithWebshare = new YtCaptionKit({
 
 The package exports error classes such as `RequestBlocked`, `IpBlocked`, `VideoUnavailable`, `VideoUnplayable`, `TranscriptsDisabled`, `NoTranscriptFound`, `AgeRestricted`, `NotTranslatable`, and `TranslationLanguageNotAvailable`.
 
+## Web Frontend
+
+Start the web UI locally:
+
+```bash
+npm run build
+npm run serve
+```
+
+Then open **http://localhost:3000** or visit **GetYTTranscripts.com**.
+
+Features:
+
+- Paste a YouTube URL or video ID
+- Browse available caption languages
+- View transcripts with clickable timestamps
+- Search within transcripts with highlighted matches
+- Translate captions into other available languages
+- Download in JSON, SRT, WebVTT, or plain text
+- Copy full transcript text to clipboard
+- Toggle between dark and light themes (`Ctrl+K` to focus search)
+
+The frontend is a single-page app served by an Express server that wraps `yt-caption-kit` as a REST API.
+
 ## Development
 
 ```bash
