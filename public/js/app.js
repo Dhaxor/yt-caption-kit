@@ -210,7 +210,12 @@
       }
 
       const chosen = state.transcripts.find((t) => !t.isGenerated) || state.transcripts[0];
-      await loadTranscript(chosen.languageCode);
+
+      try {
+        await loadTranscript(chosen.languageCode);
+      } catch {
+        return;
+      }
 
       showSection(null);
       el.resultsContent.hidden = false;
