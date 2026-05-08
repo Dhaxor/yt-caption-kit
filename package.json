@@ -70,6 +70,7 @@
     "node": ">=18"
   },
   "dependencies": {
+    "@vercel/analytics": "^2.0.1",
     "express": "^4.21.2",
     "proxy-agent": "^6.5.0"
   },
