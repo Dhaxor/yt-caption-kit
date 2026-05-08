@@ -79,12 +79,38 @@ function withTimeout(promise, ms) {
   ]);
 }
 
+async function ytOperation(operation, label) {
+  const maxRetries = 2;
+  let lastError;
+  for (let i = 0; i < maxRetries; i++) {
+    try {
+      return await withTimeout(operation(), 25000);
+    } catch (err) {
+      lastError = err;
+      const msg = err instanceof Error ? err.message : String(err);
+      if (msg.includes("socket disconnected") || msg.includes("TLS") || msg.includes("ECONNRESET")) {
+        console.warn(`${label} attempt ${i + 1} failed, retrying...`);
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw lastError;
+}
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Operation timed out — the request took too long. Please try again.")), ms),
+    ),
+  ]);
+}
+
 app.get("/api/captions/:videoId", async (req, res) => {
   try {
     const videoId = extractVideoId(req.params.videoId);
     if (!videoId) return res.status(400).json(errorBody(new Error("Invalid video ID")));
 
-    const list = await withTimeout(yt.list(videoId), 25000);
+    const list = await ytOperation(() => yt.list(videoId), "list");
 
     const transcripts = [];
     for (const t of list) {
@@ -114,7 +140,10 @@ app.get("/api/captions/:videoId/fetch", async (req, res) => {
     const format = typeof req.query.format === "string" ? req.query.format : "json";
 
     const languages = lang ? [lang] : undefined;
-    const transcript = await withTimeout(yt.fetch(videoId, { languages, preserveFormatting }), 25000);
+    const transcript = await ytOperation(
+      () => yt.fetch(videoId, { languages, preserveFormatting }),
+      "fetch",
+    );
 
     switch (format) {
       case "srt":
