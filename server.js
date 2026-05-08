@@ -97,13 +97,6 @@ async function ytOperation(operation, label) {
   }
   throw lastError;
 }
-  return Promise.race([
-    promise,
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Operation timed out — the request took too long. Please try again.")), ms),
-    ),
-  ]);
-}
 
 app.get("/api/captions/:videoId", async (req, res) => {
   try {
