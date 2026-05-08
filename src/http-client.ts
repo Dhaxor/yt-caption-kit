@@ -110,9 +110,6 @@ export class DefaultHttpClient implements HttpClient {
       );
 
       req.on("error", reject);
-      req.setTimeout(20000, () => {
-        req.destroy(new Error(`Request timed out after 20s — ${urlString}`));
-      });
       if (body) {
         req.write(body);
       }

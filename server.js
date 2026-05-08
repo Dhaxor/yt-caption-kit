@@ -70,16 +70,21 @@ function errorBody(err) {
   return { error: message, name };
 }
 
-app.get("/api/health", (_req, res) => {
-  res.json({ status: "ok", proxy: !!buildProxyConfig() });
-});
+function withTimeout(promise, ms) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error("Operation timed out — the request took too long. Please try again.")), ms),
+    ),
+  ]);
+}
 
 app.get("/api/captions/:videoId", async (req, res) => {
   try {
     const videoId = extractVideoId(req.params.videoId);
     if (!videoId) return res.status(400).json(errorBody(new Error("Invalid video ID")));
 
-    const list = await yt.list(videoId);
+    const list = await withTimeout(yt.list(videoId), 25000);
 
     const transcripts = [];
     for (const t of list) {
@@ -109,7 +114,7 @@ app.get("/api/captions/:videoId/fetch", async (req, res) => {
     const format = typeof req.query.format === "string" ? req.query.format : "json";
 
     const languages = lang ? [lang] : undefined;
-    const transcript = await yt.fetch(videoId, { languages, preserveFormatting });
+    const transcript = await withTimeout(yt.fetch(videoId, { languages, preserveFormatting }), 25000);
 
     switch (format) {
       case "srt":
