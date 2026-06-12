@@ -151,3 +151,109 @@ test("CLI returns empty output when both transcript sources are excluded", async
   ).run();
   assert.equal(output, "");
 });
+
+function singleTranscriptApi(onFetch?: (preserveFormatting?: boolean) => void) {
+  const transcript = {
+    fetch: async (preserveFormatting?: boolean) => {
+      onFetch?.(preserveFormatting);
+      return fetchedTranscript;
+    },
+    translate() {
+      return transcript;
+    },
+  };
+  return {
+    list: async () => ({
+      findGeneratedTranscript: () => transcript,
+      findManuallyCreatedTranscript: () => transcript,
+      findTranscript: () => transcript,
+      toString: () => "unused",
+    }),
+  };
+}
+
+test("CLI rejects unknown single-dash flags and flag-shaped missing values", () => {
+  assert.throws(() => new YtCaptionKitCli(["-v"]).parseArgs(), /Unknown argument/);
+  assert.throws(() => new YtCaptionKitCli(["--translate", "--format"]).parseArgs(), /Missing value/);
+  // Prototype keys are not valid formats.
+  assert.throws(() => new YtCaptionKitCli(["v1", "--format", "constructor"]).parseArgs(), /Unsupported format/);
+});
+
+test("CLI --languages stops at video-id-shaped tokens and requires a value", () => {
+  const parsed = new YtCaptionKitCli("--languages en ab-cDeF12gh".split(" ")).parseArgs();
+  assert.deepEqual(parsed.languages, ["en"]);
+  assert.deepEqual(parsed.videoIds, ["ab-cDeF12gh"]);
+  assert.throws(() => new YtCaptionKitCli(["--languages", "--format", "json"]).parseArgs(), /Missing value for --languages/);
+});
+
+test("CLI accepts URLs and the --preserve-formatting flag as positional/option input", () => {
+  const parsed = new YtCaptionKitCli(["https://youtu.be/GJLlxj_dtq8", "--preserve-formatting"]).parseArgs();
+  assert.deepEqual(parsed.videoIds, ["https://youtu.be/GJLlxj_dtq8"]);
+  assert.equal(parsed.preserveFormatting, true);
+});
+
+test("CLI --preserve-formatting is threaded into fetch", async () => {
+  let seen: boolean | undefined;
+  const cli = new YtCaptionKitCli("v1 --preserve-formatting".split(" "), {
+    apiFactory: () => singleTranscriptApi((pf) => {
+      seen = pf;
+    }) as never,
+  });
+  await cli.run();
+  assert.equal(seen, true);
+});
+
+test("CLI execute collects per-video errors separately and keeps stdout clean", async () => {
+  const cli = new YtCaptionKitCli("good bad --format json".split(" "), {
+    apiFactory: () => ({
+      list: async (videoId: string) => {
+        if (videoId === "bad") {
+          throw new Error("boom");
+        }
+        const transcript = { fetch: async () => fetchedTranscript, translate() { return transcript; } };
+        return {
+          findGeneratedTranscript: () => transcript,
+          findManuallyCreatedTranscript: () => transcript,
+          findTranscript: () => transcript,
+          toString: () => "unused",
+        };
+      },
+    }) as never,
+  });
+  const { output, errors } = await cli.execute();
+  assert.equal(errors.length, 1);
+  assert.match(errors[0]!, /bad: .*boom/);
+  assert.doesNotThrow(() => JSON.parse(output));
+});
+
+test("CLI --output writes to a file and keeps stdout empty", async () => {
+  const writes: Array<{ path: string; content: string }> = [];
+  const cli = new YtCaptionKitCli("v1 --format json --output out.json".split(" "), {
+    apiFactory: () => singleTranscriptApi() as never,
+    writeFile: async (path, content) => {
+      writes.push({ path, content });
+    },
+  });
+  const output = await cli.run();
+  assert.equal(output, "");
+  assert.equal(writes.length, 1);
+  assert.equal(writes[0]!.path, "out.json");
+  assert.doesNotThrow(() => JSON.parse(writes[0]!.content));
+});
+
+test("CLI reads video ids from stdin when given '-'", async () => {
+  const seen: string[] = [];
+  const cli = new YtCaptionKitCli(["-", "--list-transcripts"], {
+    stdin: async () => "id1\nid2\n",
+    apiFactory: () => ({
+      list: async (videoId: string) => {
+        seen.push(videoId);
+        return { toString: () => `list:${videoId}` };
+      },
+    }) as never,
+  });
+  const output = await cli.run();
+  assert.deepEqual(seen, ["id1", "id2"]);
+  assert.match(output, /list:id1/);
+  assert.match(output, /list:id2/);
+});

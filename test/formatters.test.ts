@@ -6,6 +6,7 @@ import {
   FetchedTranscriptSnippet,
   FormatterLoader,
   JSONFormatter,
+  PrettyPrintFormatter,
   SRTFormatter,
   TextFormatter,
   UnknownFormatterType,
@@ -42,4 +43,19 @@ test("SRT and WebVTT formatters render timed output", () => {
 test("FormatterLoader loads known types and rejects unknown ones", () => {
   assert.ok(new FormatterLoader().load("json") instanceof JSONFormatter);
   assert.throws(() => new FormatterLoader().load("csv" as never), UnknownFormatterType);
+  // Prototype keys must not slip through the own-property check.
+  assert.throws(() => new FormatterLoader().load("constructor" as never), UnknownFormatterType);
+  assert.throws(() => new FormatterLoader().load("toString" as never), UnknownFormatterType);
+});
+
+test("PrettyPrintFormatter and plural formatTranscripts methods work", () => {
+  assert.match(new PrettyPrintFormatter().formatTranscript(transcript), /text:/);
+
+  const many = JSON.parse(new JSONFormatter().formatTranscripts([transcript, transcript]));
+  assert.equal(many.length, 2);
+  assert.equal(many[0].length, 2);
+
+  const srtMany = new SRTFormatter().formatTranscripts([transcript, transcript]);
+  assert.match(srtMany, /00:00:00,000/);
+  assert.equal(new TextFormatter().formatTranscripts([transcript, transcript]), "Hello\nWorld\n\n\nHello\nWorld");
 });

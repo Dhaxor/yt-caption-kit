@@ -183,13 +183,14 @@ test("unplayable, invalid video ids, IP blocks, PO token and HTTP failures are h
     },
   );
 
+  // A YouTube URL with no extractable 11-character video ID is rejected
+  // locally before any network request.
   const invalidVideoClient = new MockHttpClient();
-  invalidVideoClient.onGet(/\/watch\?v=/, { body: loadAssetText("youtube.html.static") });
-  invalidVideoClient.onPost(/\/youtubei\/v1\/player\?key=/, { json: loadAssetJson("youtube_video_unavailable.innertube.json.static") });
   await assert.rejects(
-    () => new YtCaptionKit({ httpClient: invalidVideoClient }).list("https://www.youtube.com/watch?v=GJLlxj_dtq8"),
+    () => new YtCaptionKit({ httpClient: invalidVideoClient }).list("https://www.youtube.com/watch?v=tooShort"),
     InvalidVideoId,
   );
+  assert.equal(invalidVideoClient.calls.length, 0);
 
   const htmlBlockedClient = new MockHttpClient();
   htmlBlockedClient.onGet(/\/watch\?v=/, { body: loadAssetText("youtube_too_many_requests.html.static") });

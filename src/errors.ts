@@ -22,8 +22,19 @@ export class CouldNotRetrieveTranscript extends YtCaptionKitError {
   protected githubReferral =
     "\n\nIf you are sure that the described cause is not responsible for this error and that a transcript should be retrievable, please open an issue for this package and include the video ID, package version, runtime details, and a minimal reproduction.";
 
+  /** Parsed Retry-After hint (in milliseconds) when YouTube provided one. */
+  retryAfterMs?: number;
+
   constructor(public readonly videoId: string) {
     super();
+    // Error sets no own "message" when constructed without one, so expose the
+    // human-readable cause lazily; subclass fields used by causeText are only
+    // assigned after this constructor returns.
+    Object.defineProperty(this, "message", {
+      configurable: true,
+      enumerable: false,
+      get: () => this.toString(),
+    });
   }
 
   protected get causeText(): string {
@@ -46,7 +57,7 @@ export class YouTubeDataUnparsable extends CouldNotRetrieveTranscript {
 }
 
 export class YouTubeRequestFailed extends CouldNotRetrieveTranscript {
-  constructor(videoId: string, private readonly reason: string) {
+  constructor(videoId: string, public readonly reason: string, public readonly statusCode?: number) {
     super(videoId);
   }
 
@@ -84,7 +95,7 @@ export class InvalidVideoId extends CouldNotRetrieveTranscript {
 export class RequestBlocked extends CouldNotRetrieveTranscript {
   static readonly BASE_CAUSE_MESSAGE =
     "YouTube is blocking requests from your IP. This usually is due to one of the following reasons:\n- You have done too many requests and your IP has been blocked by YouTube\n- You are doing requests from an IP belonging to a cloud provider (like AWS, Google Cloud Platform, Azure, etc.). Unfortunately, most IPs from cloud providers are blocked by YouTube.\n\n";
-  private proxyConfig?: ProxyConfig;
+  protected proxyConfig?: ProxyConfig;
 
   withProxyConfig(proxyConfig?: ProxyConfig): this {
     this.proxyConfig = proxyConfig;
@@ -104,6 +115,12 @@ export class RequestBlocked extends CouldNotRetrieveTranscript {
 
 export class IpBlocked extends RequestBlocked {
   protected override get causeText(): string {
+    if (this.proxyConfig instanceof WebshareProxyConfig) {
+      return 'YouTube is blocking the IPs of your requests, despite you using Webshare proxies. Make sure you are using rotating residential proxies instead of proxy-server or static-residential products, because those are blocked much more often.';
+    }
+    if (this.proxyConfig instanceof GenericProxyConfig) {
+      return 'YouTube is blocking the IP of your proxy. A proxy only substitutes your visible IP address; rotate to a different proxy IP before retrying.';
+    }
     return `${RequestBlocked.BASE_CAUSE_MESSAGE}Use a different IP address or a rotating proxy pool before retrying.\n`;
   }
 }
@@ -116,7 +133,7 @@ export class TranscriptsDisabled extends CouldNotRetrieveTranscript {
 
 export class AgeRestricted extends CouldNotRetrieveTranscript {
   protected override get causeText(): string {
-    return "This video is age-restricted. Therefore, you are unable to retrieve transcripts for it without authenticating yourself.\n\nCookie-based authentication is currently unsupported in this package.";
+    return 'This video is age-restricted. Therefore, you are unable to retrieve transcripts for it without authenticating yourself.\n\nYou can authenticate by exporting your YouTube cookies to a Netscape-format cookies.txt file and passing its path via the "cookiesPath" option: `new YtCaptionKit({ cookiesPath: "/path/to/cookies.txt" })`. Note that YouTube may still ban accounts used for automated requests.';
   }
 }
 
@@ -139,14 +156,17 @@ export class FailedToCreateConsentCookie extends CouldNotRetrieveTranscript {
 }
 
 export class NoTranscriptFound extends CouldNotRetrieveTranscript {
-  constructor(videoId: string, private readonly requestedLanguageCodes: Iterable<string>, private readonly transcriptData: TranscriptList) {
+  private readonly requestedLanguageCodes: string[];
+
+  constructor(videoId: string, requestedLanguageCodes: Iterable<string>, private readonly transcriptData: TranscriptList) {
     super(videoId);
+    // Materialize eagerly: a one-shot Iterable (e.g. a generator) may already
+    // be exhausted by the lookup that failed, which would hide the codes here.
+    this.requestedLanguageCodes = [...requestedLanguageCodes];
   }
 
   protected override get causeText(): string {
-    return `No transcripts were found for any of the requested language codes: ${[
-      ...this.requestedLanguageCodes,
-    ]}\n\n${this.transcriptData.toString()}`;
+    return `No transcripts were found for any of the requested language codes: ${this.requestedLanguageCodes}\n\n${this.transcriptData.toString()}`;
   }
 }
 

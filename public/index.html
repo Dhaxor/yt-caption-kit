@@ -63,11 +63,6 @@
       "@type": "Offer",
       "price": "0",
       "priceCurrency": "USD"
-    },
-    "aggregateRating": {
-      "@type": "AggregateRating",
-      "ratingValue": 4.8,
-      "ratingCount": 1250
     }
   }
   </script>
@@ -274,6 +269,8 @@
 
         <div class="results-content" id="resultsContent" hidden>
 
+          <div class="player-mount" id="playerMount" hidden></div>
+
           <article class="video-card" id="videoCard">
             <div class="video-thumb">
               <img id="videoThumb" src="" alt="YouTube video thumbnail" loading="lazy" />
@@ -296,6 +293,12 @@
                 <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" role="img" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
                 <input type="text" id="searchInput" class="toolbar-search-input" placeholder="Search in transcript..." autocomplete="off" aria-label="Search transcript text" />
                 <span class="search-count" id="searchCount" hidden></span>
+                <button class="search-nav" id="searchPrev" hidden aria-label="Previous match" title="Previous match (Shift+Enter)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" role="img" aria-hidden="true"><polyline points="18 15 12 9 6 15"/></svg>
+                </button>
+                <button class="search-nav" id="searchNext" hidden aria-label="Next match" title="Next match (Enter)">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" role="img" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+                </button>
                 <button class="search-clear" id="searchClear" hidden aria-label="Clear search">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" role="img" aria-hidden="true"><path d="M18 6L6 18M6 6l12 12"/></svg>
                 </button>
