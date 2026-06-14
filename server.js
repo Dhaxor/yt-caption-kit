@@ -1,17 +1,7 @@
-import express from "express";
-import path from "path";
-import { fileURLToPath } from "url";
 import { YtCaptionKit } from "./dist/src/index.js";
 import { GenericProxyConfig, WebshareProxyConfig } from "./dist/src/proxies.js";
-import {
-  JSONFormatter,
-  TextFormatter,
-  SRTFormatter,
-  WebVTTFormatter,
-} from "./dist/src/formatters.js";
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+import { createApp } from "./app.js";
 
 function buildProxyConfig() {
   // Raw credential string: IP:PORT:USERNAME:PASSWORD (static/dedicated proxy)
@@ -43,137 +33,33 @@ function buildProxyConfig() {
   return undefined;
 }
 
+const proxyConfig = buildProxyConfig();
+
+// Let the library enforce timeouts and transient-error retries so the request
+// fails fast with a typed error instead of hanging the serverless function.
 const yt = new YtCaptionKit({
-  proxyConfig: buildProxyConfig(),
+  proxyConfig,
+  timeoutMs: Number(process.env.YT_TIMEOUT_MS) || 20_000,
+  retry: { retries: 2 },
 });
 
-const app = express();
-app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
-
-function extractVideoId(raw) {
-  if (!raw) return null;
-  const patterns = [
-    /(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/embed\/|youtube\.com\/shorts\/|m\.youtube\.com\/watch\?v=)([a-zA-Z0-9_-]{11})/,
-    /^([a-zA-Z0-9_-]{11})$/,
-  ];
-  for (const p of patterns) {
-    const m = raw.match(p);
-    if (m) return m[1];
-  }
-  return null;
-}
-
-function errorBody(err) {
-  const name = err instanceof Error ? err.constructor.name : "Error";
-  const message = String(err).trim() || name;
-  return { error: message, name };
-}
-
-function withTimeout(promise, ms) {
-  return Promise.race([
-    promise,
-    new Promise((_, reject) =>
-      setTimeout(() => reject(new Error("Operation timed out — the request took too long. Please try again.")), ms),
-    ),
-  ]);
-}
-
-async function ytOperation(operation, label) {
-  const maxRetries = 2;
-  let lastError;
-  for (let i = 0; i < maxRetries; i++) {
-    try {
-      return await withTimeout(operation(), 25000);
-    } catch (err) {
-      lastError = err;
-      const msg = err instanceof Error ? err.message : String(err);
-      if (msg.includes("socket disconnected") || msg.includes("TLS") || msg.includes("ECONNRESET")) {
-        console.warn(`${label} attempt ${i + 1} failed, retrying...`);
-        continue;
-      }
-      throw err;
-    }
-  }
-  throw lastError;
-}
-
-app.get("/api/captions/:videoId", async (req, res) => {
-  try {
-    const videoId = extractVideoId(req.params.videoId);
-    if (!videoId) return res.status(400).json(errorBody(new Error("Invalid video ID")));
-
-    const list = await ytOperation(() => yt.list(videoId), "list");
-
-    const transcripts = [];
-    for (const t of list) {
-      transcripts.push({
-        language: t.language,
-        languageCode: t.languageCode,
-        isGenerated: t.isGenerated,
-        isTranslatable: t.isTranslatable,
-      });
-    }
-
-    res.json({ videoId, transcripts });
-  } catch (err) {
-    const { name, error } = errorBody(err);
-    const code = name === "InvalidVideoId" || name === "VideoUnavailable" ? 404 : 500;
-    res.status(code).json({ error, name });
-  }
-});
-
-app.get("/api/captions/:videoId/fetch", async (req, res) => {
-  try {
-    const videoId = extractVideoId(req.params.videoId);
-    if (!videoId) return res.status(400).json(errorBody(new Error("Invalid video ID")));
-
-    const lang = typeof req.query.lang === "string" ? req.query.lang : undefined;
-    const preserveFormatting = req.query.preserveFormatting === "true";
-    const format = typeof req.query.format === "string" ? req.query.format : "json";
-
-    const languages = lang ? [lang] : undefined;
-    const transcript = await ytOperation(
-      () => yt.fetch(videoId, { languages, preserveFormatting }),
-      "fetch",
-    );
-
-    switch (format) {
-      case "srt":
-        res.type("text/plain; charset=utf-8");
-        return res.send(new SRTFormatter().format(transcript));
-      case "webvtt":
-        res.type("text/plain; charset=utf-8");
-        return res.send(new WebVTTFormatter().format(transcript));
-      case "text":
-        res.type("text/plain; charset=utf-8");
-        return res.send(new TextFormatter().format(transcript));
-      case "json":
-      default:
-        return res.json({
-          videoId: transcript.videoId,
-          language: transcript.language,
-          languageCode: transcript.languageCode,
-          isGenerated: transcript.isGenerated,
-          snippets: transcript.toRawData(),
-        });
-    }
-  } catch (err) {
-    const { name, error } = errorBody(err);
-    const code = name === "InvalidVideoId" || name === "VideoUnavailable" ? 404 : 500;
-    res.status(code).json({ error, name });
-  }
-});
-
-app.get("*", (_req, res) => {
-  res.sendFile(path.join(__dirname, "public", "index.html"));
+const app = createApp({
+  yt,
+  corsOrigin: process.env.CORS_ORIGIN ?? "*",
+  rateLimit:
+    process.env.RATE_LIMIT_DISABLED === "true"
+      ? null
+      : {
+          windowMs: Number(process.env.RATE_LIMIT_WINDOW_MS) || 60_000,
+          max: Number(process.env.RATE_LIMIT_MAX) || 30,
+        },
 });
 
 if (!process.env.VERCEL) {
   const PORT = process.env.PORT || 3000;
   app.listen(PORT, () => {
     console.log(`Get YT Transcripts → http://localhost:${PORT}`);
-    if (!buildProxyConfig()) {
+    if (!proxyConfig) {
       console.warn("No proxy configured — set WEBSHARE_PROXY_USERNAME / WEBSHARE_PROXY_PASSWORD or PROXY_URL env vars.");
     }
   });
