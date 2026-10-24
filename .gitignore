@@ -17,4 +17,4 @@ npm-debug.log*
 *.tgz
 .env
 .env.*
-*.tsbuildinfo
+*.tsbuildinfoytjob.log

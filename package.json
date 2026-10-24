@@ -1,6 +1,6 @@
 {
   "name": "yt-caption-kit",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Fetch YouTube captions and transcripts in Node.js and TypeScript without a headless browser.",
   "type": "module",
   "author": "dhaxor",
