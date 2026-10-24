@@ -3,24 +3,51 @@
   "version": "1.0.0",
   "description": "Fetch YouTube captions and transcripts in Node.js and TypeScript without a headless browser.",
   "type": "module",
-  "main": "./dist/src/index.js",
-  "types": "./dist/src/index.d.ts",
+  "author": "dhaxor",
+  "sideEffects": false,
+  "main": "./dist/cjs/index.js",
+  "module": "./dist/src/index.js",
+  "types": "./dist/cjs/index.d.ts",
   "exports": {
     ".": {
-      "types": "./dist/src/index.d.ts",
-      "import": "./dist/src/index.js"
+      "import": {
+        "types": "./dist/src/index.d.ts",
+        "default": "./dist/src/index.js"
+      },
+      "require": {
+        "types": "./dist/cjs/index.d.ts",
+        "default": "./dist/cjs/index.js"
+      }
     },
     "./errors": {
-      "types": "./dist/src/errors.d.ts",
-      "import": "./dist/src/errors.js"
+      "import": {
+        "types": "./dist/src/errors.d.ts",
+        "default": "./dist/src/errors.js"
+      },
+      "require": {
+        "types": "./dist/cjs/errors.d.ts",
+        "default": "./dist/cjs/errors.js"
+      }
     },
     "./formatters": {
-      "types": "./dist/src/formatters.d.ts",
-      "import": "./dist/src/formatters.js"
+      "import": {
+        "types": "./dist/src/formatters.d.ts",
+        "default": "./dist/src/formatters.js"
+      },
+      "require": {
+        "types": "./dist/cjs/formatters.d.ts",
+        "default": "./dist/cjs/formatters.js"
+      }
     },
     "./proxies": {
-      "types": "./dist/src/proxies.d.ts",
-      "import": "./dist/src/proxies.js"
+      "import": {
+        "types": "./dist/src/proxies.d.ts",
+        "default": "./dist/src/proxies.js"
+      },
+      "require": {
+        "types": "./dist/cjs/proxies.d.ts",
+        "default": "./dist/cjs/proxies.js"
+      }
     },
     "./package.json": "./package.json"
   },
@@ -34,12 +61,16 @@
     "LICENSE"
   ],
   "scripts": {
-    "build": "node ./node_modules/typescript/bin/tsc -p tsconfig.json",
+    "clean": "node scripts/clean.mjs",
+    "build": "npm run clean && node ./node_modules/typescript/bin/tsc -p tsconfig.json && node ./node_modules/typescript/bin/tsc -p tsconfig.cjs.json && node scripts/finalize-build.mjs",
+    "build:test": "node ./node_modules/typescript/bin/tsc -p tsconfig.test.json",
     "vercel-build": "node ./node_modules/typescript/bin/tsc -p tsconfig.json",
+    "og": "node scripts/generate-og-image.mjs",
     "serve": "npm run build && node server.js",
     "start": "node server.js",
-    "check": "npm run build",
-    "test": "npm run build && node --test dist/test/index.test.js"
+    "check": "node ./node_modules/typescript/bin/tsc -p tsconfig.json --noEmit",
+    "test": "npm run build:test && node --test dist/test/index.test.js test/server.test.mjs",
+    "prepack": "npm run build"
   },
   "repository": {
     "type": "git",
@@ -70,12 +101,11 @@
     "node": ">=18"
   },
   "dependencies": {
-    "@vercel/analytics": "^2.0.1",
-    "express": "^4.21.2",
     "proxy-agent": "^6.5.0"
   },
   "devDependencies": {
     "@types/node": "^25.4.0",
+    "express": "^4.21.2",
     "typescript": "^5.9.3"
   }
 }

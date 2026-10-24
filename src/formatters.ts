@@ -116,10 +116,11 @@ export class FormatterLoader {
   };
 
   load(formatterType: keyof typeof FormatterLoader.TYPES = "pretty"): Formatter {
-    const FormatterType = FormatterLoader.TYPES[formatterType];
-    if (!FormatterType) {
+    // Own-property check: `TYPES["constructor"]` is truthy via the prototype
+    // chain and would otherwise slip through to `new Object()`.
+    if (!Object.hasOwn(FormatterLoader.TYPES, formatterType)) {
       throw new UnknownFormatterType(formatterType);
     }
-    return new FormatterType();
+    return new FormatterLoader.TYPES[formatterType]();
   }
 }

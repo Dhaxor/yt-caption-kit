@@ -16,12 +16,24 @@ import {
 } from "./errors.js";
 import type { HttpClient, HttpResponse } from "./http-client.js";
 import type { ProxyConfig } from "./proxies.js";
+import { runWithRetries, type ResolvedRetryPolicy } from "./retry.js";
 import { INNERTUBE_API_URL, INNERTUBE_CONTEXT, WATCH_URL } from "./settings.js";
 import { decodeHtmlEntities, sanitizeVideoId, stripHtml } from "./utils.js";
 
 export interface TranslationLanguage {
   language: string;
   languageCode: string;
+}
+
+/**
+ * Shared request configuration threaded from the fetcher down to each
+ * Transcript so the transcript download is governed by the same retry,
+ * proxy, and PO-token settings as the metadata requests.
+ */
+export interface TranscriptContext {
+  proxyConfig?: ProxyConfig;
+  retryPolicy?: ResolvedRetryPolicy;
+  poToken?: string;
 }
 
 export class FetchedTranscriptSnippet {
@@ -62,12 +74,31 @@ export class FetchedTranscript implements Iterable<FetchedTranscriptSnippet> {
   }
 }
 
+function parseRetryAfterMs(headers: HttpResponse["headers"]): number | undefined {
+  const raw = headers["retry-after"];
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (!value) {
+    return undefined;
+  }
+  const seconds = Number(value);
+  if (Number.isFinite(seconds)) {
+    return Math.max(0, seconds * 1000);
+  }
+  const dateMs = Date.parse(value);
+  return Number.isNaN(dateMs) ? undefined : Math.max(0, dateMs - Date.now());
+}
+
 function ensureSuccess(response: HttpResponse, videoId: string): HttpResponse {
   if (response.statusCode === 429) {
-    throw new IpBlocked(videoId);
+    const error = new IpBlocked(videoId);
+    error.retryAfterMs = parseRetryAfterMs(response.headers);
+    throw error;
   }
-  if (response.statusCode >= 400) {
-    throw new YouTubeRequestFailed(videoId, `HTTP ${response.statusCode}`);
+  // After the HTTP client follows redirects, a residual 3xx means the redirect
+  // chain was not resolved (custom client, or hop limit hit) — treat it as a
+  // failure instead of parsing an empty redirect stub as a "successful" body.
+  if (response.statusCode >= 300) {
+    throw new YouTubeRequestFailed(videoId, `HTTP ${response.statusCode}`, response.statusCode);
   }
   return response;
 }
@@ -83,6 +114,7 @@ export class Transcript {
     public readonly languageCode: string,
     public readonly isGenerated: boolean,
     public translationLanguages: TranslationLanguage[],
+    private readonly context: TranscriptContext = {},
   ) {
     this.translationLanguagesByCode = new Map(
       translationLanguages.map((translationLanguage) => [
@@ -93,10 +125,18 @@ export class Transcript {
   }
 
   async fetch(preserveFormatting = false): Promise<FetchedTranscript> {
-    if (this.url.includes("&exp=xpe")) {
+    let url = this.url;
+    if (this.context.poToken) {
+      url += `${url.includes("?") ? "&" : "?"}pot=${encodeURIComponent(this.context.poToken)}&c=WEB`;
+    } else if (url.includes("&exp=xpe")) {
       throw new PoTokenRequired(this.videoId);
     }
-    const response = ensureSuccess(await this.httpClient.get(this.url), this.videoId);
+    // Route the transcript download through the same retry/proxy logic as the
+    // metadata requests so a 429 here can rotate IPs instead of failing hard.
+    const response = await runWithRetries(
+      async () => ensureSuccess(await this.httpClient.get(url), this.videoId),
+      this.context,
+    );
     const snippets = parseTranscriptXml(await response.text(), preserveFormatting);
     return new FetchedTranscript(
       snippets,
@@ -126,6 +166,7 @@ export class Transcript {
       languageCode,
       true,
       [],
+      this.context,
     );
   }
 
@@ -134,38 +175,75 @@ export class Transcript {
   }
 }
 
+function readRunsText(node: unknown): string | undefined {
+  if (typeof node !== "object" || node === null) {
+    return undefined;
+  }
+  const record = node as Record<string, any>;
+  // ANDROID client uses { runs: [{ text }] }; WEB client uses { simpleText }.
+  return (record.runs?.[0]?.text ?? record.simpleText) as string | undefined;
+}
+
 export class TranscriptList implements Iterable<Transcript> {
   constructor(
     public readonly videoId: string,
     private readonly manuallyCreatedTranscripts: Map<string, Transcript>,
     private readonly generatedTranscripts: Map<string, Transcript>,
-    private readonly translationLanguages: TranslationLanguage[],
+    public readonly translationLanguages: TranslationLanguage[],
   ) {}
 
-  static build(httpClient: HttpClient, videoId: string, captionsJson: Record<string, unknown>): TranscriptList {
-    const translationLanguages = ((captionsJson.translationLanguages as Array<Record<string, any>> | undefined) ?? []).map(
-      (translationLanguage) => ({
-        language: translationLanguage.languageName.runs[0].text as string,
+  static build(
+    httpClient: HttpClient,
+    videoId: string,
+    captionsJson: Record<string, unknown>,
+    context: TranscriptContext = {},
+  ): TranscriptList {
+    try {
+      return TranscriptList.buildUnsafe(httpClient, videoId, captionsJson, context);
+    } catch (error) {
+      // Any residual shape drift in the captions JSON becomes a typed,
+      // catchable error instead of a raw TypeError leaking to consumers.
+      if (error instanceof YouTubeDataUnparsable) {
+        throw error;
+      }
+      throw new YouTubeDataUnparsable(videoId);
+    }
+  }
+
+  private static buildUnsafe(
+    httpClient: HttpClient,
+    videoId: string,
+    captionsJson: Record<string, unknown>,
+    context: TranscriptContext,
+  ): TranscriptList {
+    const translationLanguages = ((captionsJson.translationLanguages as Array<Record<string, any>> | undefined) ?? [])
+      .map((translationLanguage) => ({
+        language: readRunsText(translationLanguage.languageName) ?? translationLanguage.languageCode,
         languageCode: translationLanguage.languageCode as string,
-      }),
-    );
+      }))
+      .filter((entry): entry is TranslationLanguage => typeof entry.languageCode === "string");
+
     const manuallyCreatedTranscripts = new Map<string, Transcript>();
     const generatedTranscripts = new Map<string, Transcript>();
 
     for (const caption of captionsJson.captionTracks as Array<Record<string, any>>) {
+      const baseUrl = caption?.baseUrl as string | undefined;
+      const languageCode = caption?.languageCode as string | undefined;
+      // Skip malformed tracks rather than crashing the whole fetch.
+      if (typeof baseUrl !== "string" || typeof languageCode !== "string") {
+        continue;
+      }
       const transcript = new Transcript(
         httpClient,
         videoId,
-        (caption.baseUrl as string).replace("&fmt=srv3", ""),
-        caption.name.runs[0].text as string,
-        caption.languageCode as string,
+        baseUrl.replace("&fmt=srv3", ""),
+        readRunsText(caption.name) ?? languageCode,
+        languageCode,
         caption.kind === "asr",
         caption.isTranslatable ? translationLanguages : [],
+        context,
       );
-      (caption.kind === "asr" ? generatedTranscripts : manuallyCreatedTranscripts).set(
-        caption.languageCode as string,
-        transcript,
-      );
+      (caption.kind === "asr" ? generatedTranscripts : manuallyCreatedTranscripts).set(languageCode, transcript);
     }
 
     return new TranscriptList(videoId, manuallyCreatedTranscripts, generatedTranscripts, translationLanguages);
@@ -188,7 +266,10 @@ export class TranscriptList implements Iterable<Transcript> {
   }
 
   private findIn(languageCodes: Iterable<string>, transcriptMaps: Map<string, Transcript>[]): Transcript {
-    for (const languageCode of languageCodes) {
+    // Materialize once: the iterable may be a one-shot generator and is reused
+    // by both the exact-match and base-language passes (and the error message).
+    const codes = [...languageCodes];
+    for (const languageCode of codes) {
       for (const transcriptMap of transcriptMaps) {
         const transcript = transcriptMap.get(languageCode);
         if (transcript) {
@@ -196,7 +277,19 @@ export class TranscriptList implements Iterable<Transcript> {
         }
       }
     }
-    throw new NoTranscriptFound(this.videoId, languageCodes, this);
+    // Fallback: a request for "en" should match an "en-US"/"en-GB" track (and
+    // vice versa) instead of failing — a very common real-world mismatch.
+    for (const languageCode of codes) {
+      const primary = languageCode.split("-")[0]!.toLowerCase();
+      for (const transcriptMap of transcriptMaps) {
+        for (const [code, transcript] of transcriptMap) {
+          if (code.split("-")[0]!.toLowerCase() === primary) {
+            return transcript;
+          }
+        }
+      }
+    }
+    throw new NoTranscriptFound(this.videoId, codes, this);
   }
 
   toString(): string {
@@ -229,28 +322,31 @@ enum PlayabilityFailedReason {
 }
 
 export class TranscriptListFetcher {
-  constructor(private readonly httpClient: HttpClient, private readonly proxyConfig?: ProxyConfig) {}
+  private readonly context: TranscriptContext;
 
-  async fetch(videoId: string): Promise<TranscriptList> {
-    return TranscriptList.build(this.httpClient, videoId, await this.fetchCaptionsJson(videoId));
+  constructor(
+    private readonly httpClient: HttpClient,
+    contextOrProxyConfig: TranscriptContext | ProxyConfig = {},
+  ) {
+    // Backwards compatible: older callers passed a ProxyConfig directly.
+    this.context =
+      typeof (contextOrProxyConfig as ProxyConfig).toRequestsDict === "function"
+        ? { proxyConfig: contextOrProxyConfig as ProxyConfig }
+        : (contextOrProxyConfig as TranscriptContext);
   }
 
-  private async fetchCaptionsJson(videoId: string, tryNumber = 0): Promise<Record<string, unknown>> {
-    try {
+  async fetch(videoId: string): Promise<TranscriptList> {
+    return TranscriptList.build(this.httpClient, videoId, await this.fetchCaptionsJson(videoId), this.context);
+  }
+
+  /** Fetches the raw captions metadata, retrying blocked/transient failures. */
+  async fetchCaptionsJson(videoId: string): Promise<Record<string, unknown>> {
+    return runWithRetries(async () => {
       const html = await this.fetchVideoHtml(videoId);
       const apiKey = this.extractInnertubeApiKey(html, videoId);
       const innertubeData = await this.fetchInnertubeData(videoId, apiKey);
       return this.extractCaptionsJson(innertubeData, videoId);
-    } catch (error) {
-      if (error instanceof RequestBlocked) {
-        const retries = this.proxyConfig?.retriesWhenBlocked ?? 0;
-        if (tryNumber + 1 < retries) {
-          return this.fetchCaptionsJson(videoId, tryNumber + 1);
-        }
-        throw error.withProxyConfig(this.proxyConfig);
-      }
-      throw error;
-    }
+    }, this.context);
   }
 
   private extractInnertubeApiKey(html: string, videoId: string): string {
@@ -328,7 +424,7 @@ export class TranscriptListFetcher {
       await this.httpClient.get(WATCH_URL.replace("{videoId}", sanitizeVideoId(videoId))),
       videoId,
     );
-    return decodeHtmlEntities(await response.text());
+    return decodeHtmlEntities(await response.text(), 1);
   }
 
   private async fetchInnertubeData(videoId: string, apiKey: string): Promise<Record<string, any>> {

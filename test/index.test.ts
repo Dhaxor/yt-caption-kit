@@ -1,5 +1,10 @@
 import "./api.test.js";
 import "./cli.test.js";
+import "./cookies.test.js";
 import "./formatters.test.js";
+import "./http-client.test.js";
 import "./proxies.test.js";
 import "./public-api.test.js";
+import "./retry.test.js";
+import "./transcripts.test.js";
+import "./utils.test.js";

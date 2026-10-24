@@ -91,7 +91,11 @@ export class WebshareProxyConfig extends GenericProxyConfig {
     const username = this.proxyUsername.endsWith("-rotate")
       ? this.proxyUsername.slice(0, -"-rotate".length)
       : this.proxyUsername;
-    return `http://${username}${locationCodes}-rotate:${this.proxyPassword}@${this.domainName}:${this.proxyPort}/`;
+    // Credentials containing "/", "#" or "%" would otherwise produce a URL
+    // the proxy agent either rejects or silently mis-decodes into a 407.
+    const encodedUsername = encodeURIComponent(`${username}${locationCodes}-rotate`);
+    const encodedPassword = encodeURIComponent(this.proxyPassword);
+    return `http://${encodedUsername}:${encodedPassword}@${this.domainName}:${this.proxyPort}/`;
   }
 
   override get httpUrl(): string {
