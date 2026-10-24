@@ -65,16 +65,24 @@ jobs:
           npx yt-caption-kit --version
 
   publish:
+    # Trusted publishing (OIDC): no npm token, no OTP. Requires:
+    #   - npm >= 11.5.1 and Node >= 22.14 (setup-node below pins 24)
+    #   - a trusted-publisher config on npmjs.com matching this repo + filename:
+    #       org/user: Dhaxor, repo: yt-caption-kit, workflow: ci.yml
+    #   Docs: https://docs.npmjs.com/trusted-publishers
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     needs: [build-and-test, package-smoke]
     runs-on: ubuntu-latest
+    permissions:
+      id-token: write # OIDC token for the npm registry
+      contents: read
 
     steps:
       - uses: actions/checkout@v4
-      - name: Set up Node.js 20
+      - name: Set up Node.js 24
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
           cache: npm
           registry-url: https://registry.npmjs.org
       - name: Install dependencies
@@ -83,5 +91,3 @@ jobs:
         run: npm run build
       - name: Publish to npm
         run: npm publish --access public
-        env:
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
