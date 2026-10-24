@@ -51,8 +51,8 @@ jobs:
       - name: Pack and install into a temp project
         run: |
           set -euo pipefail
-          npm pack
-          TARBALL="$(npm pack --silent)"
+          # prepack build output shares stdout with the tarball name; keep the last line only
+          TARBALL="$(npm pack --silent | tail -n1)"
           TMP="$(mktemp -d)"
           cd "$TMP"
           npm init -y >/dev/null
